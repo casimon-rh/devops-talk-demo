@@ -1,0 +1,45 @@
+pipeline {
+  agent {
+    label "nodejs"
+  }
+  stages{
+    stage('Checkout Source') {
+      steps {
+        echo "Checkout"
+        git url: "https://github.com/casimon-rh/devops-talk.git"
+        script {
+          def tag = currentBuild.number
+        }
+      }
+    }
+    stage('Install dependencies') {
+      steps {
+        echo "Installing dependencies"
+        sh "npm i"
+      }
+    }
+    stage('Unit Tests') {
+      steps {
+        echo "Running Unit Tests"
+        sh "npm run test"
+      }
+    }
+    stage('Build/Deploy') {
+      steps {
+        echo "building openshift bc"
+        script {
+          openshift.withCluster() {
+            openshift.withProject("devops-talk") {
+              def tag = currentBuild.number
+              def dc = openshift.newApp("https://github.com/casimon-rh/devops-talk.git", "--strategy=docker", "--name=devops-talk-${tag}").narrow("dc")
+              dc.expose("--port=8000")
+              openshift.selector("svc", "devops-talk-${tag}").expose()
+              def route = openshift.selector("route", "devops-talk-${tag}").object().spec.host
+              echo "${route}"
+            }
+          }
+        }
+      }
+    }
+  }
+}
